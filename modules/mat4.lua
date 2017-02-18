@@ -37,7 +37,7 @@ end
 -- Do the check to see if JIT is enabled. If so use the optimized FFI structs.
 local status, ffi, the_type
 if type(jit) == "table" and jit.status() then
-   --  status, ffi = pcall(require, "ffi")
+    status, ffi = pcall(require, "ffi")
     if status then
         ffi.cdef "typedef struct { double _m[16]; } cpml_mat4;"
         new = ffi.typeof("cpml_mat4")
@@ -59,6 +59,7 @@ local forward, side, new_up = vec3(), vec3(), vec3()
 -- @treturn mat4 out
 function mat4.new(a)
 	local out = new()
+	-- if (not g_Release) then print("Matrix created", debug.getinfo(2, 'S').source .. " : " .. debug.getinfo(2, 'l').currentline) end
 
 	-- 4x4 matrix
 	if type(a) == "table" and #a == 16 then
@@ -135,9 +136,9 @@ end
 -- @tparam vec3 up Up direction
 -- @treturn mat4 out
 function mat4.from_direction(direction, up)
-	local forward = vec3.normalize(direction)
-	local side = vec3.cross(forward, up):normalize()
-	local new_up = vec3.cross(side, forward):normalize()
+	forward = vec3.normalize(direction)
+	side = vec3.cross(forward, up):normalize()
+	new_up = vec3.cross(side, forward):normalize()
 
 	local out = new()
 	out[1]    = side.x
@@ -187,8 +188,7 @@ end
 -- @tparam number near
 -- @tparam number far
 -- @treturn mat4 out
-function mat4.from_ortho(left, right, top, bottom, near, far)
-	local out = new()
+function mat4.from_ortho(out, left, right, top, bottom, near, far)
 	out[1]    =  2 / (right - left)
 	out[6]    =  2 / (top - bottom)
 	out[11]   = -2 / (far - near)
@@ -206,12 +206,12 @@ end
 -- @tparam number near Near plane
 -- @tparam number far Far plane
 -- @treturn mat4 out
-function mat4.from_perspective(fovy, aspect, near, far)
+function mat4.from_perspective(out, fovy, aspect, near, far)
+	out:identity()
 	assert(aspect ~= 0)
 	assert(near   ~= far)
 
 	local t   = tan(rad(fovy) / 2)
-	local out = new()
 	out[1]    =  1 / (t * aspect)
 	out[6]    =  1 / t
 	out[11]   = -(far + near) / (far - near)
@@ -235,11 +235,11 @@ function mat4.from_hmd_perspective(tanHalfFov, zNear, zFar, flipZ, farAtInfinity
 	local rightHanded = true
 	local isOpenGL    = true
 
-	local function CreateNDCScaleAndOffsetFromFov(tanHalfFov)
-		x_scale  = 2 / (tanHalfFov.LeftTan + tanHalfFov.RightTan)
-		x_offset =     (tanHalfFov.LeftTan - tanHalfFov.RightTan) * x_scale * 0.5
-		y_scale  = 2 / (tanHalfFov.UpTan   + tanHalfFov.DownTan )
-		y_offset =     (tanHalfFov.UpTan   - tanHalfFov.DownTan ) * y_scale * 0.5
+	local function CreateNDCScaleAndOffsetFromFov()
+		local x_scale  = 2 / (tanHalfFov.LeftTan + tanHalfFov.RightTan)
+		local x_offset =     (tanHalfFov.LeftTan - tanHalfFov.RightTan) * x_scale * 0.5
+		local y_scale  = 2 / (tanHalfFov.UpTan   + tanHalfFov.DownTan )
+		local y_offset =     (tanHalfFov.UpTan   - tanHalfFov.DownTan ) * y_scale * 0.5
 
 		local result = {
 			Scale  = vec2(x_scale, y_scale),
@@ -258,7 +258,7 @@ function mat4.from_hmd_perspective(tanHalfFov, zNear, zFar, flipZ, farAtInfinity
 	end
 
 	 -- A projection matrix is very like a scaling from NDC, so we can start with that.
-	local scaleAndOffset  = CreateNDCScaleAndOffsetFromFov(tanHalfFov)
+	local scaleAndOffset  = CreateNDCScaleAndOffsetFromFov()
 	local handednessScale = rightHanded and -1.0 or 1.0
 	local projection      = new()
 
@@ -412,6 +412,7 @@ end
 -- @tparam vec3 s Scalar
 -- @treturn mat4 out
 function mat4.scale(out, a, s)
+	if (not s) then s, a = a, out end
 	identity(tmp)
 	tmp[1]  = s.x
 	tmp[6]  = s.y
@@ -447,12 +448,45 @@ function mat4.rotate(out, a, angle, axis)
 	tmp[3]  = x * z * (1 - c) - y * s
 	tmp[5]  = x * y * (1 - c) - z * s
 	tmp[6]  = y * y * (1 - c) + c
- 	tmp[7]  = y * z * (1 - c) + x * s
+	tmp[7]  = y * z * (1 - c) + x * s
 	tmp[9]  = x * z * (1 - c) + y * s
 	tmp[10] = y * z * (1 - c) - x * s
 	tmp[11] = z * z * (1 - c) + c
 
 	return out:mul(tmp, a)
+end
+
+local rotX = new()
+function mat4.rotate_x(angle)
+	rotX:identity()
+
+	rotX[6]  =  cos(angle)
+	rotX[7]  = -sin(angle)
+	rotX[10] =  sin(angle)
+	rotX[11] =  cos(angle)
+	return rotX
+end
+
+local rotY = new()
+function mat4.rotate_y(angle)
+	rotY:identity()
+
+	rotY[1]  =  cos(angle)
+	rotY[3]  =  sin(angle)
+	rotY[9]	 = -sin(angle)
+	rotY[11] =  cos(angle)
+	return rotY
+end
+
+local rotZ = new()
+function mat4.rotate_z(angle)
+	rotZ:identity()
+
+	rotZ[1] =  cos(angle)
+	rotZ[2] = -sin(angle)
+	rotZ[5]	=  sin(angle)
+	rotZ[6]	=  cos(angle)
+	return rotZ
 end
 
 --- Translate a matrix.
@@ -461,6 +495,7 @@ end
 -- @tparam vec3 t Translation vector
 -- @treturn mat4 out
 function mat4.translate(out, a, t)
+	if (not t) then t, a = a, out end
 	identity(tmp)
 	tmp[13] = t.x
 	tmp[14] = t.y
@@ -630,13 +665,20 @@ end
 -- @treturn string formatted
 function mat4.to_string(a)
 	local str = "[ "
+
 	for i = 1, 16 do
-		str = str .. string.format("%+0.3f", a[i])
-		if i < 16 then
-			str = str .. ", "
+		str = str .. string.format("%+0.3f, ", a[i])
+		if i % 4 == 0 then
+			if i ~= 16 then
+				str = str .. "\n  "
+			end
+		else
+			str = str .. " "
 		end
 	end
-	str = str .. " ]"
+
+	str = str .. " ]\n"
+
 	return str
 end
 
@@ -676,9 +718,8 @@ end
 -- @tparam mat4 a Matrix to be converted (projection * view)
 -- @tparam boolean infinite Infinite removes the far plane
 -- @treturn frustum out
-function mat4.to_frustum(a, infinite)
+function mat4.to_frustum(a, frustum, infinite)
 	local t
-	local frustum = {}
 
 	-- Extract the LEFT plane
 	frustum.left   = {}

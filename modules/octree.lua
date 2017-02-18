@@ -584,7 +584,12 @@ function OctreeNode:draw_bounds(cube, depth)
 		:translate(self.center)
 		:scale(vec3(self.adjLength, self.adjLength, self.adjLength))
 
-	love.graphics.updateMatrix("transform", m)
+	love.graphics.push()
+	love.graphics.multMatrix(m[1],  m[2],  m[3],  m[4],
+				  			 m[5],  m[6],  m[7],  m[8],
+				  	 		 m[9],  m[10], m[11], m[12],
+				  	 		 m[13], m[14], m[15], m[16])
+
 	love.graphics.setWireframe(true)
 	love.graphics.draw(cube)
 	love.graphics.setWireframe(false)
@@ -592,6 +597,8 @@ function OctreeNode:draw_bounds(cube, depth)
 	for _, child in ipairs(self.children) do
 		child:draw_bounds(cube, depth + 1)
 	end
+
+	love.graphics.pop()
 
 	love.graphics.setColor(255, 255, 255)
 end
